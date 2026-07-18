@@ -1,6 +1,7 @@
 import jax
 import jax.numpy as jnp
 import jax.random as random
+from jax import vmap
 from config import GPTConfig, TrainConfig
 
 def init_params(cfg: GPTConfig, key: jax.Array) -> dict:
@@ -80,9 +81,36 @@ def single_head_attention(q, k, v, mask):
     return S @ v
 
 
-def multi_head_attention(cfg, mha_params, x, mask): ...
+def multi_head_attention(cfg: GPTConfig, mha_params: dict, x: jax.Array, mask: jax.Array) -> jax.Array:
+    # x is the res stream, (seq_len, model_dim)
+    # batches single head attention function
+    # reshapes q, k, v, transposes, and funnel into batched function
+    # pre-norm
+    mha = vmap(single_head_attention, in_axes=(0, 0, 0, None))
 
-def mlp(mlp_params, x): ...
+    seq_len = x.shape[0]
+    n_heads = cfg.n_heads
+    head_dim = cfg.head_dim
+    model_dim = cfg.model_dim
+
+    Q = x @ mha_params["W_q"]
+    Q = Q.reshape(seq_len, n_heads, head_dim).transpose(1, 0, 2)
+    K = x @ mha_params["W_k"]
+    K = K.reshape(seq_len, n_heads, head_dim).transpose(1, 0, 2)
+    V = x @ mha_params["W_v"]
+    V = V.reshape(seq_len, n_heads, head_dim).transpose(1, 0, 2)
+    # Q, K, V all shape (n_heads, seq_len, head_dim)
+
+    O = mha(Q, K, V, mask) # shape (n_heads, seq_len, head_dim)
+    O = O.transpose(1, 0, 2).reshape(seq_len, model_dim)
+    return O @ mha_params["W_o"]
+
+
+def mlp(mlp_params, x):
+    # x is shape (seq_len, model_dim)
+    x = x @ mlp_params["mlp_in"] + mlp_params["b_in"]
+    x = jax.nn.gelu(x)
+    return x @ mlp_params["mlp_out"] + mlp_params["b_out"]
 
 def transformer_block(cfg, block_params, x, mask): ...
 
