@@ -45,6 +45,50 @@ def init_params(cfg: GPTConfig, key: jax.Array) -> dict:
     return params
 
 
+def embed(cfg: GPTConfig, params: dict, token_ids: jax.Array) -> jax.Array:
+    # embedding for a (seq_len,) sequence - returns an array of (seq_len, model_dim)
+    seq_len = token_ids.shape[0]
+
+    assert seq_len <= cfg.max_seq_len, "Sequence length exceeds maximum sequence length"
+
+    token_embed = params["token_embed"]
+    position_embed = params["position_embed"]
+    embeddings = token_embed[token_ids] + position_embed[:seq_len] # both (seq_len, model_dim) arrays 
+    return embeddings
+
+
+def layernorm(x: jax.Array, gamma: jax.Array, beta: jax.Array, eps=1e-5):
+    norm = (x - jnp.mean(x, axis=-1, keepdims=True)) / jnp.sqrt(jnp.var(x, axis=-1, keepdims=True) + eps)
+    return gamma * norm + beta
+
+
+def causal_mask(seq_len): # only creates the mask
+    # uses jnp.tril, first creates a (seq_len, seq_len) matrix
+    return jnp.tril(jnp.ones((seq_len, seq_len), dtype=jnp.bool))
+
+
+def single_head_attention(q, k, v, mask):
+    # q, k, v are all (seq_len, n_dim) matrixes
+    assert q.shape[1] == k.shape[1] == v.shape[1], "Invalid matrix shape[1]"
+    assert q.shape[0] == k.shape[0] == v.shape[0], "Invalid matrix shape[0]"
+
+    n_dim = q.shape[1]
+
+    S = q @ k.T * (n_dim ** -0.5) # (seq_len, seq_len) - divide by sqrt(fan_in)
+    S = jnp.where(mask, S, -jnp.inf)
+    S = jax.nn.softmax(S)
+    return S @ v
+
+
+def multi_head_attention(cfg, mha_params, x, mask): ...
+
+def mlp(mlp_params, x): ...
+
+def transformer_block(cfg, block_params, x, mask): ...
+
+def gpt2_forward(cfg, params, token_ids): ...
+
+def loss(cfg, params, token_ids, targets): ...
 
 
 
