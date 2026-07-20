@@ -147,6 +147,3 @@ def loss(params: dict, cfg: GPTConfig, token_ids: jax.Array, targets: jax.Array)
     offsets = jnp.arange(seq_len)
     cel = -jnp.mean(log_probs[offsets, targets])
     return cel
-
-
-

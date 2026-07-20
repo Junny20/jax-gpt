@@ -7,18 +7,15 @@ from jaxgpt.model import init_params
 from jaxgpt.optimizer import update, batched_loss
 
 def main():
-    path = load_tinyshakespeare()
-    f = open(path)
-    text = f.read()
+    text = load_tinyshakespeare()
     encoder, decoder, vocab_size = build_tokenizer(text)
     data = encode(text, encoder)
     train_data, val_data = split_data(data, val_frac=0.1)
-    f.close()
 
     cfg = GPTConfig(vocab_size=vocab_size, max_seq_len=256, model_dim=384, n_layers=6, n_heads=6, ff_dim=1536)
     train_cfg = TrainConfig(batch_size=32, block_size=256, lr=3e-4, n_steps=5000)
 
-    key = random.key(train_cfg.seed)
+    key = random.key(0)
     key, init_key = random.split(key)
     params = init_params(cfg, init_key)
 

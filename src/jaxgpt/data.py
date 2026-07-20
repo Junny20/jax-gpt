@@ -1,3 +1,4 @@
+import os
 import jax
 import jax.numpy as jnp
 import jax.random as random
@@ -42,7 +43,12 @@ def split_data(data: jax.Array, val_frac: float = 0.1) -> tuple[jax.Array, jax.A
     return data[:n], data[n:]
 
 
-def load_tinyshakespeare() -> str:
-    urllib.request.urlretrieve("https://raw.githubusercontent.com/karpathy/char-rnn/master/data/tinyshakespeare/input.txt", "src/jaxgpt/input.txt")
-    return "input.txt"
+_URL = "https://raw.githubusercontent.com/karpathy/char-rnn/master/data/tinyshakespeare/input.txt"
+
+def load_tinyshakespeare(path: str = "data/input.txt") -> str:
+    if not os.path.exists(path):
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        urllib.request.urlretrieve(_URL, path)
+    with open(path) as f:
+        return f.read()
 
