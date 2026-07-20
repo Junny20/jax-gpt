@@ -2,7 +2,7 @@ import jax
 import jax.numpy as jnp
 import jax.random as random
 from jax import vmap
-from config import GPTConfig, TrainConfig
+from jaxgpt.config import GPTConfig
 
 def init_params(cfg: GPTConfig, key: jax.Array) -> dict:
     # n layers, each layers has an mlp, 3 projection matrixes, 2 layernorm g/b matrixes
@@ -75,8 +75,8 @@ def single_head_attention(q, k, v, mask):
 
     n_dim = q.shape[1]
 
-    S = q @ k.T * (n_dim ** -0.5) # (seq_len, seq_len) - divide by sqrt(fan_in)
-    S = jnp.where(mask, S, -jnp.inf)
+    S = q @ k.T * (n_dim ** -0.5) # (seq_len, seq_len)
+    S = jnp.where(mask, S, -1e9)
     S = jax.nn.softmax(S)
     return S @ v
 
@@ -106,18 +106,47 @@ def multi_head_attention(cfg: GPTConfig, mha_params: dict, x: jax.Array, mask: j
     return O @ mha_params["W_o"]
 
 
-def mlp(mlp_params, x):
+def mlp(mlp_params: dict, x: jax.Array) -> jax.Array:
     # x is shape (seq_len, model_dim)
     x = x @ mlp_params["mlp_in"] + mlp_params["b_in"]
     x = jax.nn.gelu(x)
     return x @ mlp_params["mlp_out"] + mlp_params["b_out"]
 
-def transformer_block(cfg, block_params, x, mask): ...
 
-def gpt2_forward(cfg, params, token_ids): ...
+def transformer_block(cfg: GPTConfig, block_params: dict, x: jax.Array, mask: jax.Array) -> jax.Array:
+    x = x + multi_head_attention(cfg, block_params, layernorm(x, block_params["ln_1_gamma"], block_params["ln_1_beta"]), mask)
+    x = x + mlp(block_params, layernorm(x, block_params["ln_2_gamma"], block_params["ln_2_beta"]))
+    return x
 
-def loss(cfg, params, token_ids, targets): ...
 
+def gpt2_forward(cfg: GPTConfig, params: dict, token_ids: jax.Array):
+    # full forward pass for a (seq_len,) input of token_ids
+    seq_len = token_ids.shape[0]
+
+    x = embed(cfg, params, token_ids) # shape (seq_len, model_dim)
+    mask = causal_mask(seq_len)
+
+    n_layers = cfg.n_layers
+    blocks = params["blocks"]
+
+    for i in range(n_layers):
+        block_params = blocks[i]
+        x = transformer_block(cfg, block_params, x, mask)
+
+    x = layernorm(x, params["ln_f_gamma"], params["ln_f_beta"])
+    return x @ params["unembed"]
+    
+
+def loss(params: dict, cfg: GPTConfig, token_ids: jax.Array, targets: jax.Array) -> jax.Array:
+    # computes the scalar CEL by doing a forward pass over the token_ids
+    seq_len = token_ids.shape[0]
+    assert seq_len <= cfg.max_seq_len, "Sequence length exceeds maximum sequence length"
+
+    logits = gpt2_forward(cfg, params, token_ids) # shape is (seq_len, vocab_size)
+    log_probs = logits - jax.nn.logsumexp(logits, axis=-1, keepdims=True)
+    offsets = jnp.arange(seq_len)
+    cel = -jnp.mean(log_probs[offsets, targets])
+    return cel
 
 
 

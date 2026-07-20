@@ -1,6 +1,7 @@
 import jax
 import jax.numpy as jnp
 import jax.random as random
+import urllib.request
 
 def build_tokenizer(text: str) -> tuple[dict, dict, int]:
     """Tuple returns an encoder, decoder, and vocab size"""
@@ -35,6 +36,13 @@ def get_batch(data: jax.Array, batch_size: int, block_size: int, key) -> tuple[j
     
     return data[token_ids], data[targets] 
 
+
 def split_data(data: jax.Array, val_frac: float = 0.1) -> tuple[jax.Array, jax.Array]:
     n = int(data.shape[0] * (1 - val_frac))
     return data[:n], data[n:]
+
+
+def load_tinyshakespeare() -> str:
+    urllib.request.urlretrieve("https://raw.githubusercontent.com/karpathy/char-rnn/master/data/tinyshakespeare/input.txt", "src/jaxgpt/input.txt")
+    return "input.txt"
+
